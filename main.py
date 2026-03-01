@@ -1,7 +1,7 @@
+import os
 import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QListWidgetItem
-import sys
 sys.path.insert(0, "..")
 import xml.etree.ElementTree as ET
 from pygments import highlight
@@ -30,6 +30,30 @@ from opcua import Client
 from opcua import ua
 
 from Atvise import Ui_MainWindow
+
+
+def load_security_config():
+    """Load OPC UA security settings from environment variables."""
+    cert_path = os.getenv("ATVISE_OPCUA_CERT_PATH")
+    key_path = os.getenv("ATVISE_OPCUA_KEY_PATH")
+    policy = os.getenv("ATVISE_OPCUA_SECURITY_POLICY", "Basic256Sha256")
+    mode = os.getenv("ATVISE_OPCUA_SECURITY_MODE", "SignAndEncrypt")
+
+    if not cert_path and not key_path:
+        return None
+
+    if not cert_path or not key_path:
+        raise ValueError("ATVISE_OPCUA_CERT_PATH and ATVISE_OPCUA_KEY_PATH must both be set")
+
+    cert_file = os.path.abspath(cert_path)
+    key_file = os.path.abspath(key_path)
+
+    if not os.path.exists(cert_file):
+        raise FileNotFoundError("Configured certificate file does not exist: {}".format(cert_file))
+    if not os.path.exists(key_file):
+        raise FileNotFoundError("Configured private key file does not exist: {}".format(key_file))
+
+    return "{},{},{},{}".format(policy, mode, cert_file, key_file)
 
 
 class ViewFormatter():
@@ -64,12 +88,10 @@ class OPCUAConnector():
     def connect(self):
         try:
             self.display = []
-            #self.client.set_security(self.client.server_policy_uri(ua.MessageSecurityMode.None_), "uaclient_untrustedRootCert.der", "uaclient_privateKey.pem")
+            security_string = load_security_config()
+            if security_string:
+                self.client.set_security_string(security_string)
             self.client.connect()
-            #print(self.client.load_client_certificate("../uaclient_untrustedRootCert.der"))
-            #print(self.client.load_private_key("../uaclient_privateKey.pem"))
-            #print(self.client.user_certificate);
-
 
         except:
             print("Unexpected error:", sys.exc_info())
@@ -84,29 +106,20 @@ class OPCUAConnector():
         except ConnectionError:
             print("Es besteht keine Verbindung")
 
-    def browse(self,start,filtertype):
-        visited = set()
-        display_nodes = set(self.displays)
-        stack = list(self.client.get_node(start).get_children())
+    def browse(self,start,filtertype,results=None):
+        if results is None:
+            results = []
 
-        while stack:
-            node_ref = stack.pop()
-            node = self.client.get_node(node_ref)
-            node_id = node.nodeid.to_string()
+        root = self.client.get_node(start).get_children()
+        if len(root) > 0:
+            for idx in root:
 
-            if node_id in visited:
-                continue
+                if (self.client.get_node(idx).get_type_definition() == filtertype):
+                    results.append(self.client.get_node(idx).nodeid.to_string())
+                self.browse(idx,filtertype,results)
 
-            visited.add(node_id)
-
-            if node.get_type_definition() == filtertype and node_id not in display_nodes:
-                self.displays.append(node_id)
-                display_nodes.add(node_id)
-
-            for child in node.get_children():
-                child_node_id = self.client.get_node(child).nodeid.to_string()
-                if child_node_id not in visited:
-                    stack.append(child)
+        self.displays = results
+        return list(results)
 
     def getDisplays(self):
         return self.displays
@@ -189,8 +202,8 @@ if __name__ == '__main__':
         global test
         At.setAddress(prog.URL.text())
         At.connect()
-        At.browse("ns=1;s=AGENT", "VariableTypes.ATVISE.Display")
-        test = At.getDisplays()
+        prog.Nodes.clear()
+        test = At.browse("ns=1;s=AGENT", "VariableTypes.ATVISE.Display")
         prog.addListtoView(test)
         prog.Content.setReadOnly(True)
         try:

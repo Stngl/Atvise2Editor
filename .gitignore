@@ -1,0 +1,19 @@
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# Local editor scratch files
+newfile.js
+
+# OPC UA client credentials / certificates (must be supplied outside this repo)
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.der
+
+# Explicitly ignore previously committed credential files
+uaclient_privateKey.pem
+uaclient_untrustedRootCert.der
