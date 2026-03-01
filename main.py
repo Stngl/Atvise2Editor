@@ -105,38 +105,42 @@ class OPCUAConnector():
 
     def writeValue(self,item,value):
         th = self.client.get_node(item)
-        print(value);
-        root = ET.fromstring(self.getValue(item))
-        for node in root.iter('{http://www.w3.org/2000/svg}script'):
-            node.text = '<![CDATA[' + value + ']]>';
-            print(node.text);
+        print(value)
 
-        #  node.text = '<![CDATA['.encode() + value + ']]>';
+        try:
+            root = ET.fromstring(self.getValue(item))
+        except ET.ParseError as exc:
+            raise ValueError("Unable to update display: stored SVG/XML is malformed.") from exc
+
+        script_nodes = list(root.iter('{http://www.w3.org/2000/svg}script'))
+        if not script_nodes:
+            raise ValueError("Unable to update display: no <script> node found in SVG/XML.")
+
+        for node in script_nodes:
+            node.text = value
+            print(node.text)
+
         ET.register_namespace("", "http://www.w3.org/2000/svg")
-        ET.register_namespace("atv","http://webmi.atvise.com/2007/svgext")
+        ET.register_namespace("atv", "http://webmi.atvise.com/2007/svgext")
         ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
-        root_string = ET.tostring(root,encoding="UTF-8",method="html")
 
-        print(root_string)
-        test=  minidom.parseString(ET.tostring(root,encoding="UTF-8")).toprettyxml()
+        try:
+            serialized_xml = ET.tostring(root, encoding="UTF-8", method="xml")
+            ET.fromstring(serialized_xml)
+            payload = minidom.parseString(serialized_xml).toprettyxml()
+        except (ET.ParseError, Exception) as exc:
+            raise ValueError("Unable to update display: generated SVG/XML is invalid.") from exc
+
+        print(serialized_xml)
 
         try:
             print(th.get_type_definition())
             tet = th.get_attribute(13)
-            #th.set_writable(True)
-            val = str(test).replace("&lt;", "<")
-            val2 = val.replace("&gt;", ">")
-            val3 = val2.replace("&quot;",'"');
-            length = int(len(val3)-1)
-            print(length)
-            tet.Value.Value.Value = val3
-
-            print(tet.Value.Value.Value);
+            tet.Value.Value.Value = payload
+            print(tet.Value.Value.Value)
             th.set_value(tet)
-
-
-        except:
-            print("Unexpected error:", sys.exc_info())
+        except Exception as exc:
+            raise ValueError("Unable to update display on OPC UA server.") from exc
 
 
 class MyFirstGuiProgram(Ui_MainWindow):
@@ -200,7 +204,10 @@ if __name__ == '__main__':
             print("editor closed")
             file = open("newfile.js","r")
             content = file.read()
-            At.writeValue(selectNode,content)
+            try:
+                At.writeValue(selectNode,content)
+            except ValueError as error:
+                QtWidgets.QMessageBox.critical(dialog, "Update failed", str(error))
             file.close();
 
     prog.ConnectButton.clicked.connect(connectatvise)
