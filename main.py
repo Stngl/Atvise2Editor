@@ -85,15 +85,28 @@ class OPCUAConnector():
             print("Es besteht keine Verbindung")
 
     def browse(self,start,filtertype):
-        address = start
-        filter = filtertype
-        root = self.client.get_node(start).get_children()
-        if len(root) > 0:
-            for idx in root:
+        visited = set()
+        display_nodes = set(self.displays)
+        stack = list(self.client.get_node(start).get_children())
 
-                if (self.client.get_node(idx).get_type_definition() == filtertype):
-                    self.displays.append(self.client.get_node(idx).nodeid.to_string())
-                self.browse(idx,filter)
+        while stack:
+            node_ref = stack.pop()
+            node = self.client.get_node(node_ref)
+            node_id = node.nodeid.to_string()
+
+            if node_id in visited:
+                continue
+
+            visited.add(node_id)
+
+            if node.get_type_definition() == filtertype and node_id not in display_nodes:
+                self.displays.append(node_id)
+                display_nodes.add(node_id)
+
+            for child in node.get_children():
+                child_node_id = self.client.get_node(child).nodeid.to_string()
+                if child_node_id not in visited:
+                    stack.append(child)
 
     def getDisplays(self):
         return self.displays
