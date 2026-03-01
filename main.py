@@ -63,7 +63,7 @@ class OPCUAConnector():
 
     def connect(self):
         try:
-            self.display = []
+            self.displays = []
             #self.client.set_security(self.client.server_policy_uri(ua.MessageSecurityMode.None_), "uaclient_untrustedRootCert.der", "uaclient_privateKey.pem")
             self.client.connect()
             #print(self.client.load_client_certificate("../uaclient_untrustedRootCert.der"))
@@ -84,16 +84,20 @@ class OPCUAConnector():
         except ConnectionError:
             print("Es besteht keine Verbindung")
 
-    def browse(self,start,filtertype):
-        address = start
-        filter = filtertype
+    def browse(self,start,filtertype,results=None):
+        if results is None:
+            results = []
+
         root = self.client.get_node(start).get_children()
         if len(root) > 0:
             for idx in root:
 
                 if (self.client.get_node(idx).get_type_definition() == filtertype):
-                    self.displays.append(self.client.get_node(idx).nodeid.to_string())
-                self.browse(idx,filter)
+                    results.append(self.client.get_node(idx).nodeid.to_string())
+                self.browse(idx,filtertype,results)
+
+        self.displays = results
+        return list(results)
 
     def getDisplays(self):
         return self.displays
@@ -176,8 +180,8 @@ if __name__ == '__main__':
         global test
         At.setAddress(prog.URL.text())
         At.connect()
-        At.browse("ns=1;s=AGENT", "VariableTypes.ATVISE.Display")
-        test = At.getDisplays()
+        prog.Nodes.clear()
+        test = At.browse("ns=1;s=AGENT", "VariableTypes.ATVISE.Display")
         prog.addListtoView(test)
         prog.Content.setReadOnly(True)
         try:
